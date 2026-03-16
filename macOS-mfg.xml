@@ -1,0 +1,169 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
+<!--
+	macOS libvirt XML configuration.
+
+	Run "virt-xml-validate macOS-mfg.xml" to validate this file.
+
+	To install this file, you may place it at ~/.config/libvirt/qemu/
+	and run: virsh define macOS-mfg.xml.
+
+	This configuration has been tested in Ubuntu 20.04 with stock QEMU-KVM.
+
+	Move/rename images and loader/nvmram files and paths as you wish.
+
+Memory is set to 12000 MiB.
+
+	CPU: Skylake-Client with 1 socket, 6 cores, 2 threads (12 vCPUs).
+	  -hle and -rtm are disabled (TSX errata workaround).
+
+	Firmware: OVMF_CODE_4M.fd + OVMF_VARS-1920x1080.fd (1920x1080 default res).
+
+	Disk layout (ich9-ahci SATA controller):
+	  sata port 2: OpenCore.qcow2  (transient/snapshot — changes not persisted)
+	  sata port 3: BaseSystem.img  (macOS installer, raw)
+	  sata port 4: mac_hdd_ng.img  (macOS HDD, qcow2)
+
+	Network: user-mode (NAT) with host port 2222 → guest port 22 (SSH).
+	  MAC: 52:54:00:c9:18:27
+
+	Audio: ich9-intel-hda with hda-duplex codec.
+
+	Video: vmware-svga (vmvga).
+
+	VirtFS: host path /home/mgering/osx-share → guest mount tag host_share
+	  (9p, mapped-xattr security model).
+
+	USB: qemu-xhci (USB 3.0) + usb-ehci (USB 2.0).
+	  Keyboard and tablet attached to xhci bus.
+
+	Note: Default configuration caused severe clock problems
+	under Fedora 27 w/ i7-5820K. This is because Darwin uses
+	tsc (time since last tick) for time, and for me did not
+	fall back to rtc in the event of a clock mismatch with
+	libvirt's default time source. Therefore we must explicitly
+	give the clock a tsc timer for kvm to pass to the guest.
+	See comments on the <kvm> and <clock> attributes.
+-->
+  <name>macOS</name>
+  <uuid>2aca0dd6-cec9-4717-9ab2-0b7b13d111d3</uuid>
+  <title>macOS</title>
+  <memory unit='MiB'>12000</memory>
+  <currentMemory unit='MiB'>12000</currentMemory>
+  <vcpu placement='static'>12</vcpu>
+  <os>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <loader readonly='yes' type='pflash'>/mnt/whale/projects/OSX-KVM/OVMF_CODE_4M.fd</loader>
+    <nvram template='/mnt/whale/projects/OSX-KVM/OVMF_VARS.fd'>/var/lib/libvirt/qemu/nvram/macOS_VARS.fd</nvram>
+  </os>
+  <!-- SMP topology: 1 socket x 6 cores x 2 threads; CPU model set via qemu:commandline -->
+  <cpu>
+    <topology sockets='1' cores='6' threads='2'/>
+  </cpu>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>restart</on_crash>
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+    <!-- OpenCore boot disk: transient so changes are not persisted (snapshot=on) -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='/mnt/whale/projects/OSX-KVM/OpenCore/OpenCore.qcow2'/>
+      <transient/>
+      <target dev='sda' bus='sata'/>
+      <boot order='2'/>
+      <address type='drive' controller='0' bus='0' target='0' unit='2'/>
+    </disk>
+    <!-- macOS installer media (raw) -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='raw' cache='writeback'/>
+      <source file='/mnt/whale/projects/OSX-KVM/BaseSystem.img'/>
+      <target dev='sdb' bus='sata'/>
+      <boot order='3'/>
+      <address type='drive' controller='0' bus='0' target='0' unit='3'/>
+    </disk>
+    <!-- macOS HDD -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='writeback' io='threads'/>
+      <source file='/mnt/whale/projects/OSX-KVM/mac_hdd_ng.img'/>
+      <target dev='sdc' bus='sata'/>
+      <boot order='1'/>
+      <address type='drive' controller='0' bus='0' target='0' unit='4'/>
+    </disk>
+    <!-- ich9-ahci SATA controller -->
+    <controller type='sata' index='0'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x1f' function='0x2'/>
+    </controller>
+    <controller type='pci' index='0' model='pcie-root'/>
+    <!-- USB 3.0 xHCI controller (qemu-xhci); kbd and tablet attached here -->
+    <controller type='usb' index='0' model='qemu-xhci'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x07' function='0x0'/>
+    </controller>
+    <!-- USB 2.0 eHCI controller -->
+    <controller type='usb' index='1' model='ehci'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x07' function='0x1'/>
+    </controller>
+    <!-- User-mode network (NAT) via passt; host:2222 → guest:22 for SSH -->
+    <!-- MAC matches original CLI: 52:54:00:c9:18:27 -->
+    <interface type='user'>
+      <backend type='passt'/>
+      <mac address='52:54:00:c9:18:27'/>
+      <model type='virtio'/>
+      <portForward proto='tcp'>
+        <range start='2222' to='22'/>
+      </portForward>
+    </interface>
+    <!-- Intel HDA audio with duplex codec (ich9-intel-hda + hda-duplex) -->
+    <sound model='ich9'>
+      <codec type='duplex'/>
+    </sound>
+    <serial type='pty'>
+      <target type='isa-serial' port='0'>
+        <model name='isa-serial'/>
+      </target>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+<!-- Input devices on xhci bus (index 0) -->
+    <input type='tablet' bus='usb'>
+      <address type='usb' bus='0' port='1'/>
+    </input>
+    <input type='keyboard' bus='usb'>
+      <address type='usb' bus='0' port='2'/>
+    </input>
+    <!-- VirtFS 9p host share: /home/mgering/osx-share → mount tag host_share -->
+    <filesystem type='mount' accessmode='mapped'>
+      <source dir='/home/mgering/osx-share'/>
+      <target dir='host_share'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x09' function='0x0'/>
+    </filesystem>
+    <graphics type='spice' autoport='yes'>
+      <listen type='address'/>
+    </graphics>
+    <!-- VMware SVGA video (-device vmware-svga) -->
+    <video>
+      <model type='vga' vram='16384' heads='1' primary='yes'/>
+    </video>
+    <memballoon model='none'/>
+  </devices>
+  <!-- Note: Enable the next line when SELinux is enabled -->
+  <!-- seclabel type='dynamic' model='selinux' relabel='yes'/> -->
+  <qemu:commandline>
+    <qemu:arg value='-device'/>
+    <qemu:arg value='isa-applesmc,osk=ourhardworkbythesewordsguardedpleasedontsteal(c)AppleComputerInc'/>
+    <qemu:arg value='-smbios'/>
+    <qemu:arg value='type=2'/>
+    <qemu:arg value='-cpu'/>
+    <qemu:arg value='Skylake-Client,kvm=on,vendor=GenuineIntel,+invtsc,vmware-cpuid-freq=on,+ssse3,+sse4.2,+popcnt,+avx,+aes,+xsave,+xsaveopt,+hle,+rtm,check'/>
+  </qemu:commandline>
+</domain>

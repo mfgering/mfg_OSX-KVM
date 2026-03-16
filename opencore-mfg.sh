@@ -71,4 +71,4 @@ args=(
   #-spice port=6900,addr=127.0.0.1,disable-ticketing=on
 )
 
-qemu-system-x86_64 "${args[@]}"
+echo qemu-system-x86_64 "${args[@]}"

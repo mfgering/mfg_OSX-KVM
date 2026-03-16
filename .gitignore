@@ -10,3 +10,4 @@
 OVMF_VARS*.fd
 OpenCore-Catalina/EFI/OC/Resources/
 .direnv/
+OpenCore/OpenCore.qcow2.TRANSIENT-macOS
