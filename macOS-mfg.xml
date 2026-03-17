@@ -112,16 +112,7 @@ Memory is set to 12000 MiB.
     <controller type='usb' index='1' model='ehci'>
       <address type='pci' domain='0x0000' bus='0x00' slot='0x07' function='0x1'/>
     </controller>
-    <!-- User-mode network (NAT) via passt; host:2222 → guest:22 for SSH -->
-    <!-- MAC matches original CLI: 52:54:00:c9:18:27 -->
-    <interface type='user'>
-      <backend type='passt'/>
-      <mac address='52:54:00:c9:18:27'/>
-      <model type='virtio'/>
-      <portForward proto='tcp'>
-        <range start='2222' to='22'/>
-      </portForward>
-    </interface>
+    <!-- Network via qemu:commandline (matches OpenCore-Boot.sh exactly) -->
     <!-- Intel HDA audio with duplex codec (ich9-intel-hda + hda-duplex) -->
     <sound model='ich9'>
       <codec type='duplex'/>
@@ -164,6 +155,10 @@ Memory is set to 12000 MiB.
     <qemu:arg value='-smbios'/>
     <qemu:arg value='type=2'/>
     <qemu:arg value='-cpu'/>
-    <qemu:arg value='Skylake-Client,kvm=on,vendor=GenuineIntel,+invtsc,vmware-cpuid-freq=on,+ssse3,+sse4.2,+popcnt,+avx,+aes,+xsave,+xsaveopt,+hle,+rtm,check'/>
+    <qemu:arg value='Skylake-Client,-hle,-rtm,kvm=on,vendor=GenuineIntel,+invtsc,vmware-cpuid-freq=on,+ssse3,+sse4.2,+popcnt,+avx,+aes,+xsave,+xsaveopt,check'/>
+    <qemu:arg value='-netdev'/>
+    <qemu:arg value='user,id=net0,hostfwd=tcp::2222-:22'/>
+    <qemu:arg value='-device'/>
+    <qemu:arg value='virtio-net-pci,netdev=net0,id=net0,mac=52:54:00:c9:18:27,bus=pcie.0,addr=0x0b'/>
   </qemu:commandline>
 </domain>
